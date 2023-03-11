@@ -2,14 +2,25 @@ plugins {
     id 'eclipse'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '5.1.+'
+    id 'io.freefair.lombok' version '8.0.0-rc2'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
 }
 
-version = '0.0.1-1.19'
+version = '0.0.1-1.19.3'
 group = 'com.brotherhoodgames.pixen' // http://maven.apache.org/guides/mini/guide-naming-conventions.html
 archivesBaseName = 'pixen'
 
 // Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+configurations {
+    shade
+    implementation.extendsFrom shade
+}
+
+test {
+    useJUnitPlatform();
+}
 
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 minecraft {
@@ -140,10 +151,17 @@ dependencies {
     // For more info...
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
+
+    shade 'org.apache.commons:commons-math3:3.6.1'
+    minecraftLibrary 'org.apache.commons:commons-math3:3.6.1'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
 jar {
+    archiveClassifier = 'slim'
     manifest {
         attributes([
                 "Specification-Title"     : "pixen",
@@ -157,9 +175,23 @@ jar {
     }
 }
 
+shadowJar {
+    archiveClassifier = ''
+    configurations = [project.configurations.shade]
+    relocate 'org.apache.commons', "${project.group}.shadowed.org.apacheCommons"
+    finalizedBy 'reobfShadowJar'
+}
+
+assemble.dependsOn shadowJar
+
+reobf {
+    shadowJar {}
+}
+
 // Example configuration to allow publishing using the maven-publish plugin
 // This is the preferred method to reobfuscate your jar file
-jar.finalizedBy('reobfJar')
+tasks.build.dependsOn reobfShadowJar
+jar.finalizedBy('reobfShadowJar')
 // However if you are in a multi-project build, dev time needs unobfed jar files, so you can delay the obfuscation until publishing by doing
 // publish.dependsOn('reobfJar')
 

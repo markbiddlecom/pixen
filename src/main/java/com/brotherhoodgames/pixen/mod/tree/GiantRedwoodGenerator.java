@@ -4,29 +4,29 @@ import static com.brotherhoodgames.pixen.mod.tree.Branch.isVertical;
 
 import com.brotherhoodgames.pixen.mod.util.Randomness;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.NotNull;
 
 public class GiantRedwoodGenerator {
   public static final int MAX_TREE_RADIUS = 40;
   public static final int MAX_TREE_HEIGHT = 200;
   public static final int MAX_BRANCH_ITERATIONS = 1000;
 
-  private static final Vec3 NORTH = new Vec3(0, 0, 1);
-  private static final Vec3 WEST = new Vec3(1, 0, 0);
-  private static final Vec3 SOUTH = new Vec3(0, 0, -1);
-  private static final Vec3 EAST = new Vec3(-1, 0, 0);
-  private static final Vec3 UP = new Vec3(0, 1, 0);
-  private static final Vec3 DOWN = new Vec3(0, -1, 0);
+  private static final Vec3 NORTH = Vec3.atLowerCornerOf(Direction.NORTH.getNormal());
+  private static final Vec3 WEST = Vec3.atLowerCornerOf(Direction.WEST.getNormal());
+  private static final Vec3 SOUTH = Vec3.atLowerCornerOf(Direction.SOUTH.getNormal());
+  private static final Vec3 EAST = Vec3.atLowerCornerOf(Direction.EAST.getNormal());
+  private static final Vec3 UP = Vec3.atLowerCornerOf(Direction.UP.getNormal());
+  private static final Vec3 DOWN = Vec3.atLowerCornerOf(Direction.DOWN.getNormal());
 
   private final GiantRedwoodGenerationParameters parameters;
 
@@ -44,126 +44,155 @@ public class GiantRedwoodGenerator {
       int treeWorldZ,
       @Nonnull RandomSource random,
       @Nonnull GenerationCollaborator collaborator) {
-    double trunkRadius = Math.abs(parameters.trunkDiameter.sample(random)) / 2.0;
-    int maxTreeRadius = (int) Math.min(MAX_TREE_RADIUS, Math.ceil(trunkRadius * 3));
-    int maxSliceIndex = maxTreeRadius * 2 + 1;
-    List<TreeBlock[][]> slices = Lists.newArrayList();
+    TreeSpace tree = new TreeSpace(Math.abs(parameters.trunkDiameter.sample(random)) / 2.0);
 
-    generateTrunk(parameters, random, trunkRadius, maxTreeRadius, maxSliceIndex, slices);
-    generateBranches(parameters, slices, maxTreeRadius, maxSliceIndex, random);
+    generateTrunk(parameters, random, tree);
+    generateBranches(parameters, tree, random);
 
     // Copy the generated tree to the collaborator
-    for (int sy = 0; sy < slices.size(); sy++) {
-      TreeBlock[][] slice = slices.get(sy);
-      for (int sx = 0; sx < maxSliceIndex; sx++) {
-        for (int sz = 0; sz < maxSliceIndex; sz++) {
-          TreeBlock b = slice[sx][sz];
-          if (b != null) {
-            collaborator.setBlock(
-                b,
-                -maxTreeRadius + sx + treeWorldX,
-                treeWorldY + sy,
-                -maxTreeRadius + sz + treeWorldZ);
-          }
-        }
-      }
-    }
+    tree.streamCells()
+        .filter(TreeSpace.Cell::isFilled)
+        .forEach(
+            cell ->
+                collaborator.setBlock(
+                    cell.getNonnull(),
+                    cell.treeX + treeWorldX,
+                    cell.y + treeWorldY,
+                    cell.treeZ + treeWorldZ));
   }
 
   private static void generateTrunk(
       GiantRedwoodGenerationParameters parameters,
-      @NotNull RandomSource random,
-      double trunkRadius,
-      int maxTreeRadius,
-      int maxSliceIndex,
-      List<TreeBlock[][]> slices) {
+      @Nonnull RandomSource random,
+      @Nonnull TreeSpace tree) {
     List<TrunkChord> treeChords = initializeRings(parameters, random);
     double id = Math.abs(parameters.heartwoodDiameter.sample(random)) / 2.0;
+    double trunkRadius = tree.trunkBaseRadius;
     double setback = parameters.trunkSetback.sample(random);
 
-    TreeBlock[][] slice = new TreeBlock[maxSliceIndex][maxSliceIndex];
+    TreeSpace.Slice slice = tree.baseSlice();
 
     final TrunkChord maxTrunkChord =
         TrunkChord.builder().atOrigin().size(trunkRadius * 1.8, 0).unmoving().build();
 
-    while (trunkRadius > 0.5) {
-      findTrunk(trunkRadius, maxTreeRadius, maxSliceIndex, treeChords, slice, maxTrunkChord);
-      findBarkRing(maxSliceIndex, slice);
-
-      slices.add(Arrays.stream(slice).map(TreeBlock[]::clone).toArray(TreeBlock[][]::new));
-      if (slices.size() >= MAX_TREE_HEIGHT) break;
+    while (trunkRadius > 0.5 && slice.allocate().isPresent()) {
+      fillTrunk(slice, treeChords, maxTrunkChord);
+      findBarkRing(slice);
 
       trunkRadius -= setback;
       setback += parameters.trunkSetbackAcceleration.sample(random);
       treeChords.forEach(TrunkChord::climb);
+
+      slice = slice.above();
     }
+    tree.markTrunkHeight();
   }
 
-  private static void findTrunk(
-      double trunkRadius,
-      int maxTreeRadius,
-      int maxSliceIndex,
-      List<TrunkChord> treeChords,
-      TreeBlock[][] slice,
-      TrunkChord maxTrunkChord) {
-    for (int sx = 0; sx < maxSliceIndex; sx++) {
-      for (int sz = 0; sz < maxSliceIndex; sz++) {
-        if (maxTrunkChord.distance(-maxTreeRadius + sx, -maxTreeRadius + sz) <= 0) {
-          double nx = (-maxTreeRadius + sx) / trunkRadius;
-          double nz = (-maxTreeRadius + sz) / trunkRadius;
-          double d = treeChords.stream().mapToDouble(c -> c.distance(nx, nz)).min().orElse(1);
-          slice[sx][sz] = d <= 0 ? TreeBlock.WOOD : null;
-        }
-      }
-    }
+  private static void fillTrunk(
+      @Nonnull TreeSpace.Slice slice,
+      @Nonnull List<TrunkChord> treeChords,
+      @Nonnull TrunkChord maxTrunkChord) {
+    slice
+        .streamCells()
+        .forEach(
+            cell -> {
+              if (maxTrunkChord.distance(cell.treeX, cell.treeZ) <= 0) {
+                double d =
+                    treeChords.stream()
+                        .mapToDouble(c -> c.distance(cell.treeX, cell.treeZ))
+                        .min()
+                        .orElse(1);
+                if (d <= 0) {
+                  cell.set(TreeBlock.WOOD);
+                }
+              }
+            });
   }
 
-  private static void findBarkRing(int maxSliceIndex, TreeBlock[][] slice) {
-    for (int sx = 0; sx < maxSliceIndex; sx++) {
-      for (int sz = 0; sz < maxSliceIndex; sz++) {
-        if (slice[sx][sz] == TreeBlock.WOOD
-            && (sx <= 0
-                || slice[sx - 1][sz] == null
-                || sz <= 0
-                || slice[sx][sz - 1] == null
-                || sx >= maxSliceIndex - 1
-                || slice[sx + 1][sz] == null
-                || sz >= maxSliceIndex - 1
-                || slice[sx][sz + 1] == null))
-          // If this block is touching air, it's bark
-          slice[sx][sz] = TreeBlock.BARK;
-      }
-    }
+  private static void findBarkRing(@Nonnull TreeSpace.Slice slice) {
+    slice
+        .streamCells()
+        .forEach(
+            cell -> {
+              if (cell.isFilled() && cell.isTouchingInSlice(TreeBlock.AIR)) {
+                cell.set(TreeBlock.BARK);
+              }
+            });
   }
 
   private static void generateBranches(
-      GiantRedwoodGenerationParameters parameters,
-      List<TreeBlock[][]> slices,
-      int maxTreeRadius,
-      int maxSliceIndex,
-      RandomSource random) {
+      @Nonnull GiantRedwoodGenerationParameters parameters,
+      @Nonnull TreeSpace tree,
+      @Nonnull RandomSource random) {
+    int branchCount = (int) parameters.branchCount.sample(random);
+    double branchSeparation = (Math.PI * 2) / (branchCount + 1);
+
     List<Branch> branches =
-        IntStream.range(0, (int) parameters.branchCount.sample(random))
+        IntStream.range(0, branchCount)
             .mapToObj(
-                _ignored ->
-                    Branch.builder()
-                        .fromParameters(random, parameters)
-                        .currentLocation(
-                            new BlockPos(
-                                0,
-                                slices.size() * parameters.branchHeightDistribution.sample(random),
-                                0))
-                        .growthDirection(Randomness.oneOf(random, WEST, NORTH, EAST, SOUTH))
-                        .turnSelectionFunction(GiantRedwoodGenerator::turnSelectionFunction)
-                        .build())
+                branchIndex ->
+                    initializeBranch(parameters, tree, random, branchIndex, branchSeparation))
             .toList();
+
     int i = 0;
     while (!branches.isEmpty() && i++ < MAX_BRANCH_ITERATIONS) {
-      branches =
-          branches.stream()
-              .flatMap(b -> b.crawl(random, maxTreeRadius, maxSliceIndex, slices).stream())
-              .toList();
+      branches = branches.stream().flatMap(b -> b.crawl(random, tree).stream()).toList();
     }
+  }
+
+  private static @Nonnull Branch initializeBranch(
+      @Nonnull GiantRedwoodGenerationParameters parameters,
+      @Nonnull TreeSpace tree,
+      @Nonnull RandomSource random,
+      int branchIndex,
+      double branchSeparation) {
+    TreeSpace.Slice slice =
+        tree.slice(
+            (int) (tree.getTrunkHeight() * parameters.branchHeightDistribution.sample(random)));
+
+    // Branch length is primarily a function of tree size and the branch's y position in the trunk.
+    // The length factor is scaled using the branch distribution function, so that branches are
+    // longest where they're most likely to grow. Finally, the default output is scaled by sampling
+    // the branch length function.
+    double targetLength =
+        tree.maxTreeRadius
+            * parameters
+                .branchHeightDistribution
+                .toFunction(
+                    0, tree.getTrunkHeight(), tree.maxTreeRadius * 0.25, tree.maxTreeRadius * 0.75)
+                .apply((double) slice.y)
+            * parameters.branchLength.sample(random);
+
+    // Find the starting position for the branch. Move out from the tree center along a set
+    // direction until we hit an air block or until we've gone past the base radius.
+    double branchXzPlaneAngle = branchIndex * branchSeparation;
+    Vec2 searchDirection =
+        new Vec2((float) Math.sin(branchXzPlaneAngle), (float) Math.cos(branchXzPlaneAngle))
+            // Scale down so that we have a better chance of finding the correct starting point
+            .scale(0.8f);
+
+    double maxSearchDistance = tree.trunkBaseRadius * 1.2;
+    Vec2 currentLocation = new Vec2(0, 0);
+    while (currentLocation.length() < maxSearchDistance && slice.cell(currentLocation).isFilled()) {
+      currentLocation = currentLocation.add(searchDirection);
+    }
+
+    // Pick the starting orientation using the cardinal direction closest (via dot product) to the
+    // selected growth direction.
+    Vec3 growthDirection =
+        Stream.of(NORTH, EAST, SOUTH, WEST)
+            .min(
+                Comparator.comparing(
+                    dir -> Math.abs(searchDirection.dot(new Vec2((float) dir.x, (float) dir.z)))))
+            .orElse(NORTH);
+
+    return Branch.builder()
+        .fromParameters(random, parameters)
+        .targetLength(targetLength)
+        .currentLocation(new BlockPos(currentLocation.x, slice.y, currentLocation.y))
+        .growthDirection(growthDirection)
+        .turnSelectionFunction(GiantRedwoodGenerator::turnSelectionFunction)
+        .build();
   }
 
   @Nonnull
@@ -172,6 +201,7 @@ public class GiantRedwoodGenerator {
       @Nonnull BlockPos curPosition,
       @Nonnull Vec3 curDirection,
       @Nonnull Vec3 turnBias) {
+    if (Math.abs(1) == 1) return curDirection;
     final float ninetyDegrees = (float) Math.PI / 2;
     Vec3 turnBasis =
         (curDirection.multiply(1, 0, 1).length() >= 1e-9

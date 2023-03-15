@@ -1,7 +1,5 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
-import static com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.MAX_TREE_HEIGHT;
-
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
 import com.google.common.collect.Lists;
@@ -38,12 +36,8 @@ import org.jetbrains.annotations.NotNull;
   final @Nonnull TurnSelectionFunction turnSelectionFunction;
 
   @Nonnull
-  List<Branch> crawl(
-      @Nonnull RandomSource random,
-      int maxTreeRadius,
-      int maxSliceIndex,
-      @Nonnull List<GiantRedwoodGenerator.TreeBlock[][]> tree) {
-    if (!advance(tree, maxTreeRadius, maxSliceIndex)) {
+  List<Branch> crawl(@Nonnull RandomSource random, @Nonnull TreeSpace tree) {
+    if (!advance(tree)) {
       // TODO: Apply leaves
       // This branch is finished
       return Collections.emptyList();
@@ -73,7 +67,7 @@ import org.jetbrains.annotations.NotNull;
               .multiply(this.outwardBias, this.outwardBias, this.outwardBias);
       Vec3 upwardBias =
           new Vec3(0, 1, 0).multiply(this.upwardBias, this.upwardBias, this.upwardBias);
-      // TODO: calculate turn bias
+      // TODO: calculate avoid bias
       Vec3 avoidBias = Vec3.ZERO;
       Vec3 continueBias =
           growthDirection
@@ -95,10 +89,7 @@ import org.jetbrains.annotations.NotNull;
     return branches;
   }
 
-  private boolean advance(
-      @NotNull List<GiantRedwoodGenerator.TreeBlock[][]> tree,
-      int maxTreeRadius,
-      int maxSliceIndex) {
+  private boolean advance(@NotNull TreeSpace tree) {
     Vec3 position =
         new Vec3(currentLocation.getX(), currentLocation.getY(), currentLocation.getZ());
     BlockPos newPos = new BlockPos(currentLocation);
@@ -111,19 +102,11 @@ import org.jetbrains.annotations.NotNull;
     }
 
     // Make sure we're still within the bounds of the tree area
-    int nx = newPos.getX() + maxTreeRadius;
-    int nz = newPos.getZ() + maxTreeRadius;
-
-    if (nx < 0
-        || nz < 0
-        || nx >= maxSliceIndex
-        || nz >= maxSliceIndex
-        || newPos.getY() < 0
-        || newPos.getY() > MAX_TREE_HEIGHT) return false;
+    if (!tree.areValidTreeCoordinates(newPos)) return false;
 
     // Add missing tree slices
-    for (int y = tree.size() - 1; y <= newPos.getY(); y++)
-      tree.add(new GiantRedwoodGenerator.TreeBlock[maxSliceIndex][maxSliceIndex]);
+    TreeSpace.Slice slice = tree.slice(newPos.getY()).allocate().orElse(null);
+    if (slice == null) return false;
 
     int l = newPos.distManhattan(currentLocation);
     currentLength += l;
@@ -145,7 +128,7 @@ import org.jetbrains.annotations.NotNull;
     }
 
     currentLocation = newPos;
-    tree.get(currentLocation.getY())[nx][nz] = GiantRedwoodGenerator.TreeBlock.LOG;
+    slice.set(currentLocation.getX(), currentLocation.getZ(), GiantRedwoodGenerator.TreeBlock.LOG);
 
     return currentLength < targetLength;
   }

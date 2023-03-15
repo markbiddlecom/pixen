@@ -1,7 +1,5 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
-import static com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.UP;
-
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
 import com.google.common.collect.Lists;
@@ -68,21 +66,8 @@ import org.jetbrains.annotations.NotNull;
               .build());
     } else if (currentSegmentLength >= targetSegmentLength) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
-      Vec3 outwardBias =
-          new Vec3(currentLocation.getX(), 0, currentLocation.getZ())
-              .normalize()
-              .scale(this.outwardBias);
-      Vec3 upwardBias = UP.scale(this.upwardBias);
-      // TODO: calculate avoid bias
-      Vec3 avoidBias = Vec3.ZERO;
-      Vec3 continueBias = growthDirection.normalize().scale(this.continueBias);
-
       growthDirection =
-          turnSelectionFunction.turn(
-              random,
-              currentLocation,
-              growthDirection,
-              outwardBias.add(upwardBias).add(avoidBias).add(continueBias));
+          turnSelectionFunction.turn(random, currentLocation, growthDirection, calculateTurnBias());
 
       currentSegmentLength = 0;
       targetSegmentLength = segmentLengthFunction.sample(random);
@@ -90,6 +75,34 @@ import org.jetbrains.annotations.NotNull;
     }
 
     return remainingBranches;
+  }
+
+  @NotNull
+  private Vec3 calculateTurnBias() {
+    // The outward bias is a vector that will return the branch to the position it *should* be if
+    // it had travelled straight outwards along the base direction vector. The XZ direction is
+    // weighted independently of the Y direction.
+    Vec3 outwardBias =
+        currentLocation
+            .getCenter()
+            .vectorTo(baseDirection.normalize().scale(currentLength))
+            .normalize()
+            .multiply(this.outwardBias, this.upwardBias, this.outwardBias);
+
+    // The continuation bias is the propensity of the branch to continue growing in its current
+    // direction even though it's being asked to turn. Put differently, this is the propensity of
+    // the branch to override its turn directive.
+    Vec3 continueBias = growthDirection.normalize().scale(this.continueBias);
+
+    // The avoidance bias is a vector that will move the branch's growth farthest away from all
+    // neighboring blocks.
+    // TODO: calculate avoid bias
+    Vec3 avoidBias = Vec3.ZERO;
+
+    // We leave the overall turn bias unscaled to accommodate turn algorithms that take the
+    // strength of the bias into account.
+    Vec3 turnBias = outwardBias.add(continueBias).add(avoidBias);
+    return turnBias;
   }
 
   private boolean advance(@NotNull TreeSpace tree) {

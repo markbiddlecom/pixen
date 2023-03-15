@@ -202,7 +202,7 @@ public class GiantRedwoodGenerator {
       @Nonnull BlockPos curPosition,
       @Nonnull Vec3 curDirection,
       @Nonnull Vec3 turnBias) {
-    // Choose whatever direction best accommodates the bias direction.
+    // Choose whatever direction will move us closer to the turn bias.
     // TODO: make this a little more random
     Vec3 negatedBias = turnBias.normalize().scale(-1);
     return Stream.of(NORTH, EAST, SOUTH, WEST)

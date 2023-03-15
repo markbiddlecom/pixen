@@ -28,7 +28,7 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
           .heartwoodDiameter(RandomVariables.confidenceInterval(0.999999, 2, 4))
           .trunkSetback(RandomVariables.constant(0.01))
           .trunkSetbackAcceleration(RandomVariables.confidenceInterval(0.98, 0.0005, 0.003))
-          .branchCount(RandomVariables.confidenceInterval(0.8, 15, 25))
+          .branchCount(RandomVariables.confidenceInterval(0.8, 5, 10))
           .branchLength(RandomVariables.confidenceInterval(0.8, 8, 15))
           .branchStraightnessBias(RandomVariables.constant(0.1))
           .branchSeparationBias(RandomVariables.constant(1))

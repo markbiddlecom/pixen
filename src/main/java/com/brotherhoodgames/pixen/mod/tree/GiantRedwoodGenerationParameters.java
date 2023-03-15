@@ -29,7 +29,7 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
           .trunkSetback(RandomVariables.constant(0.01))
           .trunkSetbackAcceleration(RandomVariables.confidenceInterval(0.98, 0.0005, 0.003))
           .branchCount(RandomVariables.confidenceInterval(0.8, 15, 25))
-          .branchLength(RandomVariables.confidenceInterval(0.8, 20, 30))
+          .branchLength(RandomVariables.confidenceInterval(0.8, 8, 15))
           .branchStraightnessBias(RandomVariables.constant(0.1))
           .branchSeparationBias(RandomVariables.constant(1))
           .branchRadialBias(RandomVariables.constant(3))
@@ -41,12 +41,12 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
           .branchHeightDistribution(
               Pdfs.fromHistogram(
                   ""
-                      + "                                                  *******            \n"
-                      + "                                                 *       ***         \n"
-                      + "                                                *           **       \n"
-                      + "                                              **              *      \n"
-                      + "                                           ***                 *     \n"
-                      + "                                      ****                      ***  \n"))
+                      + "                                            *******                  \n"
+                      + "                                           *       ****              \n"
+                      + "                                          *            **            \n"
+                      + "                                        **               *           \n"
+                      + "                                     ***                  *          \n"
+                      + "                                ****                       *****     \n"))
           .branchSplitDistribution(
               Pdfs.fromHistogram(
                   ""

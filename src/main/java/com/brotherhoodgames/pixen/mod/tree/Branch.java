@@ -1,5 +1,7 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
+import static com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.UP;
+
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
 import com.google.common.collect.Lists;
@@ -31,25 +33,29 @@ import org.jetbrains.annotations.NotNull;
   final double upwardBias;
   final double continueBias;
   final double splitProbabilityScalar;
+  final @Nonnull Vec3 baseDirection;
   final @Nonnull Pdf splitProbabilityFunction;
   final @Nonnull RandomVariable segmentLengthFunction;
   final @Nonnull TurnSelectionFunction turnSelectionFunction;
 
   @Nonnull
   List<Branch> crawl(@Nonnull RandomSource random, @Nonnull TreeSpace tree) {
+    tree.setIfEmpty(currentLocation, GiantRedwoodGenerator.TreeBlock.LOG);
+
     if (!advance(tree)) {
       // TODO: Apply leaves
       // This branch is finished
       return Collections.emptyList();
     }
 
-    List<Branch> branches = Lists.newArrayList(this);
+    List<Branch> remainingBranches = Lists.newArrayList(this);
     double splitP =
         //        splitProbabilityScalar * splitProbabilityFunction.sample(currentLength /
         // targetLength);
         0;
     if (random.nextDouble() <= splitP) {
-      branches.add(
+      tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT);
+      remainingBranches.add(
           Branch.builder()
               .splitFrom(this)
               .currentSegmentLength(0)
@@ -61,18 +67,15 @@ import org.jetbrains.annotations.NotNull;
                       .normalize())
               .build());
     } else if (currentSegmentLength >= targetSegmentLength) {
+      tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
       Vec3 outwardBias =
           new Vec3(currentLocation.getX(), 0, currentLocation.getZ())
               .normalize()
-              .multiply(this.outwardBias, this.outwardBias, this.outwardBias);
-      Vec3 upwardBias =
-          new Vec3(0, 1, 0).multiply(this.upwardBias, this.upwardBias, this.upwardBias);
+              .scale(this.outwardBias);
+      Vec3 upwardBias = UP.scale(this.upwardBias);
       // TODO: calculate avoid bias
       Vec3 avoidBias = Vec3.ZERO;
-      Vec3 continueBias =
-          growthDirection
-              .normalize()
-              .multiply(this.continueBias, this.continueBias, this.continueBias);
+      Vec3 continueBias = growthDirection.normalize().scale(this.continueBias);
 
       growthDirection =
           turnSelectionFunction.turn(
@@ -86,7 +89,7 @@ import org.jetbrains.annotations.NotNull;
       if (targetSegmentLength > 3 && isVertical(growthDirection)) targetSegmentLength = 3;
     }
 
-    return branches;
+    return remainingBranches;
   }
 
   private boolean advance(@NotNull TreeSpace tree) {
@@ -128,8 +131,6 @@ import org.jetbrains.annotations.NotNull;
     }
 
     currentLocation = newPos;
-    slice.set(currentLocation.getX(), currentLocation.getZ(), GiantRedwoodGenerator.TreeBlock.LOG);
-
     return currentLength < targetLength;
   }
 

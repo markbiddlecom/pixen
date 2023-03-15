@@ -1,12 +1,8 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
-import static com.brotherhoodgames.pixen.mod.tree.Branch.isVertical;
-
-import com.brotherhoodgames.pixen.mod.util.Randomness;
 import com.google.common.collect.ImmutableList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
@@ -21,12 +17,12 @@ public class GiantRedwoodGenerator {
   public static final int MAX_TREE_HEIGHT = 200;
   public static final int MAX_BRANCH_ITERATIONS = 1000;
 
-  private static final Vec3 NORTH = Vec3.atLowerCornerOf(Direction.NORTH.getNormal());
-  private static final Vec3 WEST = Vec3.atLowerCornerOf(Direction.WEST.getNormal());
-  private static final Vec3 SOUTH = Vec3.atLowerCornerOf(Direction.SOUTH.getNormal());
-  private static final Vec3 EAST = Vec3.atLowerCornerOf(Direction.EAST.getNormal());
-  private static final Vec3 UP = Vec3.atLowerCornerOf(Direction.UP.getNormal());
-  private static final Vec3 DOWN = Vec3.atLowerCornerOf(Direction.DOWN.getNormal());
+  /*package*/ static final Vec3 NORTH = Vec3.atLowerCornerOf(Direction.NORTH.getNormal());
+  /*package*/ static final Vec3 WEST = Vec3.atLowerCornerOf(Direction.WEST.getNormal());
+  /*package*/ static final Vec3 SOUTH = Vec3.atLowerCornerOf(Direction.SOUTH.getNormal());
+  /*package*/ static final Vec3 EAST = Vec3.atLowerCornerOf(Direction.EAST.getNormal());
+  /*package*/ static final Vec3 UP = Vec3.atLowerCornerOf(Direction.UP.getNormal());
+  /*package*/ static final Vec3 DOWN = Vec3.atLowerCornerOf(Direction.DOWN.getNormal());
 
   private final GiantRedwoodGenerationParameters parameters;
 
@@ -76,7 +72,7 @@ public class GiantRedwoodGenerator {
         TrunkChord.builder().atOrigin().size(trunkRadius * 1.8, 0).unmoving().build();
 
     while (trunkRadius > 0.5 && slice.allocate().isPresent()) {
-      fillTrunk(slice, treeChords, maxTrunkChord);
+      fillTrunk(slice, treeChords, maxTrunkChord, trunkRadius);
       findBarkRing(slice);
 
       trunkRadius -= setback;
@@ -91,7 +87,8 @@ public class GiantRedwoodGenerator {
   private static void fillTrunk(
       @Nonnull TreeSpace.Slice slice,
       @Nonnull List<TrunkChord> treeChords,
-      @Nonnull TrunkChord maxTrunkChord) {
+      @Nonnull TrunkChord maxTrunkChord,
+      double trunkRadius) {
     slice
         .streamCells()
         .forEach(
@@ -99,7 +96,8 @@ public class GiantRedwoodGenerator {
               if (maxTrunkChord.distance(cell.treeX, cell.treeZ) <= 0) {
                 double d =
                     treeChords.stream()
-                        .mapToDouble(c -> c.distance(cell.treeX, cell.treeZ))
+                        .mapToDouble(
+                            c -> c.distance(cell.treeX / trunkRadius, cell.treeZ / trunkRadius))
                         .min()
                         .orElse(1);
                 if (d <= 0) {
@@ -176,20 +174,23 @@ public class GiantRedwoodGenerator {
     while (currentLocation.length() < maxSearchDistance && slice.cell(currentLocation).isFilled()) {
       currentLocation = currentLocation.add(searchDirection);
     }
+    // TODO: move setting this to the branch class so it can accommodate leaves and such
+    slice.cell(currentLocation).set(TreeBlock.LOG);
 
-    // Pick the starting orientation using the cardinal direction closest (via dot product) to the
+    // Pick the starting orientation using the cardinal direction closest (via subtraction) to the
     // selected growth direction.
+    final Vec3 searchDirectionNegatedNormalized =
+        new Vec3(searchDirection.x, 0, searchDirection.y).normalize().scale(-1);
     Vec3 growthDirection =
         Stream.of(NORTH, EAST, SOUTH, WEST)
-            .min(
-                Comparator.comparing(
-                    dir -> Math.abs(searchDirection.dot(new Vec2((float) dir.x, (float) dir.z)))))
+            .min(Comparator.comparing(dir -> searchDirectionNegatedNormalized.add(dir).lengthSqr()))
             .orElse(NORTH);
 
     return Branch.builder()
         .fromParameters(random, parameters)
         .targetLength(targetLength)
         .currentLocation(new BlockPos(currentLocation.x, slice.y, currentLocation.y))
+        .baseDirection(new Vec3(searchDirection.x, 0, searchDirection.y).normalize())
         .growthDirection(growthDirection)
         .turnSelectionFunction(GiantRedwoodGenerator::turnSelectionFunction)
         .build();
@@ -201,29 +202,12 @@ public class GiantRedwoodGenerator {
       @Nonnull BlockPos curPosition,
       @Nonnull Vec3 curDirection,
       @Nonnull Vec3 turnBias) {
-    if (Math.abs(1) == 1) return curDirection;
-    final float ninetyDegrees = (float) Math.PI / 2;
-    Vec3 turnBasis =
-        (curDirection.multiply(1, 0, 1).length() >= 1e-9
-                ? curDirection
-                : new Vec3(curPosition.getX(), 0, curPosition.getZ()))
-            .multiply(1, 0, 1)
-            .normalize();
-    Vec3 turnLeft = turnBasis.yRot(-ninetyDegrees);
-    Vec3 turnRight = turnBasis.yRot(ninetyDegrees);
-    Vec3 turnUp = isVertical(curDirection) ? Vec3.ZERO : UP;
-    Vec3 turnDown = isVertical(curDirection) ? Vec3.ZERO : DOWN;
-
-    return Optional.ofNullable(
-            Randomness.oneOf(
-                r,
-                Stream.of(turnLeft, turnRight, turnUp, turnDown)
-                    .map(v -> v.add(v.scale(2 * turnBias.normalize().dot(v))).scale(10))
-                    .flatMap(
-                        turn ->
-                            IntStream.range(0, (int) turn.length()).mapToObj(i -> turn.normalize()))
-                    .toArray(Vec3[]::new)))
-        .orElse(curDirection);
+    // Choose whatever direction best accommodates the bias direction.
+    // TODO: make this a little more random
+    Vec3 negatedBias = turnBias.normalize().scale(-1);
+    return Stream.of(NORTH, EAST, SOUTH, WEST)
+        .min(Comparator.comparing(dir -> negatedBias.add(dir).lengthSqr()))
+        .orElse(NORTH);
   }
 
   private static @Nonnull ImmutableList<TrunkChord> initializeRings(
@@ -280,6 +264,8 @@ public class GiantRedwoodGenerator {
     COMPOSTED_LOG,
     LEAVES,
     AMBER,
+    DEBUG_LOG_TURN,
+    DEBUG_LOG_SPLIT
   }
 
   @FunctionalInterface

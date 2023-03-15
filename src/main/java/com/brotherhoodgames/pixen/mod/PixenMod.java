@@ -5,6 +5,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_O;
 import com.brotherhoodgames.pixen.mod.block.ModBlocks;
 import com.brotherhoodgames.pixen.mod.item.ModItems;
 import com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator;
+import com.google.common.collect.ImmutableMap;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -87,6 +89,18 @@ public class PixenMod {
 
   @Mod.EventBusSubscriber(modid = MOD_ID, value = Dist.CLIENT)
   public static class ClientInputEvents {
+    private static final ImmutableMap<GiantRedwoodGenerator.TreeBlock, BlockState> TREE_BLOCKS =
+        ImmutableMap.<GiantRedwoodGenerator.TreeBlock, BlockState>builder()
+            .put(GiantRedwoodGenerator.TreeBlock.BARK, Blocks.SPRUCE_WOOD.defaultBlockState())
+            .put(GiantRedwoodGenerator.TreeBlock.LOG, Blocks.SPRUCE_WOOD.defaultBlockState())
+            .put(
+                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT,
+                Blocks.RED_WOOL.defaultBlockState())
+            .put(
+                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN,
+                Blocks.BLUE_WOOL.defaultBlockState())
+            .build();
+
     @SubscribeEvent
     public static void onKeyInput(@Nonnull InputEvent.Key e) {
       if (TEST_TREE_MAPPING.consumeClick()) {
@@ -114,9 +128,8 @@ public class PixenMod {
                             (b, x, y, z) -> {
                               mc.level.setBlock(
                                   new BlockPos(x, y, z),
-                                  b == GiantRedwoodGenerator.TreeBlock.BARK
-                                      ? Blocks.SPRUCE_WOOD.defaultBlockState()
-                                      : Blocks.STRIPPED_SPRUCE_WOOD.defaultBlockState(),
+                                  Optional.ofNullable(TREE_BLOCKS.get(b))
+                                      .orElse(Blocks.STRIPPED_SPRUCE_WOOD.defaultBlockState()),
                                   3);
                             }));
       }

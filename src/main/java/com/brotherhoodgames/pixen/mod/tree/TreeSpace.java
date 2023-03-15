@@ -57,6 +57,17 @@ public class TreeSpace {
   }
 
   /**
+   * @return a (potentially invalid) tree cell representing the space at the given tree coordinates.
+   */
+  public @Nonnull Cell cell(int treeX, int treeY, int treeZ) {
+    return new Cell(
+        this,
+        treeCoordinateToUnsafeSliceIndex(treeX),
+        treeY,
+        treeCoordinateToUnsafeSliceIndex(treeZ));
+  }
+
+  /**
    * @return the stored tree block at the given coordinates within this tree space, or {@code null}
    *     if the coordinates are {@linkplain #areValidTreeCoordinates(int, int, int) not valid} or if
    *     no specific block was calculated.
@@ -74,12 +85,52 @@ public class TreeSpace {
    *     previously stored block.
    */
   public @Nullable GiantRedwoodGenerator.TreeBlock set(
+      @Nullable BlockPos treeCoordinates, @Nullable GiantRedwoodGenerator.TreeBlock block) {
+    if (treeCoordinates == null) return null;
+    else return set(treeCoordinates.getX(), treeCoordinates.getY(), treeCoordinates.getZ(), block);
+  }
+
+  /**
+   * Updates the stored block at the given coordinates within this tree space.
+   *
+   * @return the block previously stored at the coordinates, or {@code null} when the coordinates
+   *     are {@linkplain #areValidTreeCoordinates(int, int, int) not valid} or when there was no
+   *     previously stored block.
+   */
+  public @Nullable GiantRedwoodGenerator.TreeBlock setIfEmpty(
+      @Nullable BlockPos treeCoordinates, @Nullable GiantRedwoodGenerator.TreeBlock block) {
+    if (treeCoordinates == null) return null;
+    else
+      return setIfEmpty(
+          treeCoordinates.getX(), treeCoordinates.getY(), treeCoordinates.getZ(), block);
+  }
+
+  /**
+   * Updates the stored block at the given coordinates within this tree space.
+   *
+   * @return the block previously stored at the coordinates, or {@code null} when the coordinates
+   *     are {@linkplain #areValidTreeCoordinates(int, int, int) not valid} or when there was no
+   *     previously stored block.
+   */
+  public @Nullable GiantRedwoodGenerator.TreeBlock set(
       int treeX, int treeY, int treeZ, @Nullable GiantRedwoodGenerator.TreeBlock block) {
     return setFromSliceCoords(
         treeCoordinateToUnsafeSliceIndex(treeX),
         treeY,
         treeCoordinateToUnsafeSliceIndex(treeZ),
         block);
+  }
+
+  /**
+   * Updates the stored block at the given coordinates within this tree space.
+   *
+   * @return the block previously stored at the coordinates, or {@code null} when the coordinates
+   *     are {@linkplain #areValidTreeCoordinates(int, int, int) not valid} or when there was no
+   *     previously stored block.
+   */
+  public @Nullable GiantRedwoodGenerator.TreeBlock setIfEmpty(
+      int treeX, int treeY, int treeZ, @Nullable GiantRedwoodGenerator.TreeBlock block) {
+    return cell(treeX, treeY, treeZ).setIfEmpty(block);
   }
 
   /*package*/ double sliceIndexToTreeCoordinate(double sliceIndex) {
@@ -333,6 +384,26 @@ public class TreeSpace {
     public @Nullable GiantRedwoodGenerator.TreeBlock set(
         @Nullable GiantRedwoodGenerator.TreeBlock block) {
       return tree.setFromSliceCoords(sliceXIndex, y, sliceZIndex, block);
+    }
+
+    /**
+     * Sets the tree block stored at this location within the tree space, unless the current cell is
+     * {@linkplain #isFilled() currently occupied}.
+     *
+     * @return
+     *     <ol>
+     *       <li>when this location is invalid, does not set and returns {@code null}
+     *       <li>when this location is valid and previously {@linkplain #isEmpty() empty}, sets and
+     *           returns {@code null} or {@code AIR} as appropriate
+     *       <li>when this location is valid and previously {@linkplain #isFilled() filled}, does
+     *           <em>not</em> set and returns the previous block
+     *     </ol>
+     */
+    public @Nullable GiantRedwoodGenerator.TreeBlock setIfEmpty(
+        @Nullable GiantRedwoodGenerator.TreeBlock block) {
+      GiantRedwoodGenerator.TreeBlock previous = get();
+      if (previous == null || previous == GiantRedwoodGenerator.TreeBlock.AIR) set(block);
+      return previous;
     }
 
     /**

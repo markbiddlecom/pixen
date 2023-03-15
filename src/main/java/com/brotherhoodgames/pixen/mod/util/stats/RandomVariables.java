@@ -17,7 +17,7 @@ public class RandomVariables {
   }
 
   public static @Nonnull RandomVariable linear(double slope, double offset) {
-    return new LinearVariable(slope, offset);
+    return new LinearVariable(offset, slope);
   }
 
   public static @Nonnull RandomVariable range(double min, double max) {

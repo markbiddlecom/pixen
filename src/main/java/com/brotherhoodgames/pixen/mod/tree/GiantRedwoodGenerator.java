@@ -1,5 +1,6 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
+import com.brotherhoodgames.pixen.mod.util.DoubleRange;
 import com.google.common.collect.ImmutableList;
 import java.util.Comparator;
 import java.util.List;
@@ -147,7 +148,7 @@ public class GiantRedwoodGenerator {
       double branchSeparation) {
     TreeSpace.Slice slice =
         tree.slice(
-            (int) (tree.getTrunkHeight() * parameters.branchHeightDistribution.sample(random)));
+            (int) (tree.getTrunkHeight() * parameters.branchHeightDistribution.sampleCdf(random)));
 
     // Branch length is primarily a function of tree size and the branch's y position in the trunk.
     // The length factor is scaled using the branch distribution function, so that branches are
@@ -156,7 +157,9 @@ public class GiantRedwoodGenerator {
     double targetLength =
         parameters
                 .branchHeightDistribution
-                .toFunction(0, tree.getTrunkHeight(), 0.5, 0.5)
+                .pdfToFunction(
+                    DoubleRange.fromOrigin().spanning(tree.getTrunkHeight()),
+                    DoubleRange.from(0.5).to(1.0))
                 .apply((double) slice.y)
             * parameters.branchLength.sample(random);
 

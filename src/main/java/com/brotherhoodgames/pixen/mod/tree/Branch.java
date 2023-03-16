@@ -32,6 +32,7 @@ import org.jetbrains.annotations.NotNull;
   final double continueBias;
   final double splitProbabilityScalar;
   final @Nonnull Vec3 baseDirection;
+  final @Nonnull Vec3 basePosition;
   final @Nonnull Pdf splitProbabilityFunction;
   final @Nonnull RandomVariable segmentLengthFunction;
   final @Nonnull TurnSelectionFunction turnSelectionFunction;
@@ -66,12 +67,30 @@ import org.jetbrains.annotations.NotNull;
               .build());
     } else if (currentSegmentLength >= targetSegmentLength) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
+
+      Vec3 prevDir = growthDirection;
+      Vec3 turnBias = calculateTurnBias();
       growthDirection =
-          turnSelectionFunction.turn(random, currentLocation, growthDirection, calculateTurnBias());
+          turnSelectionFunction.turn(random, currentLocation, growthDirection, turnBias);
+      if (growthDirection.vectorTo(prevDir).lengthSqr() > 1e-3) {
+        System.out
+            .printf(
+                "----> Branch turn from (%+.1f, %+.1f, %+.1f) to (%+.1f, %+.1f, %+.1f) via turn bias (%+.4f, %+.4f, %+.4f)",
+                prevDir.x,
+                prevDir.y,
+                prevDir.z,
+                growthDirection.x,
+                growthDirection.y,
+                growthDirection.z,
+                turnBias.x,
+                turnBias.y,
+                turnBias.z)
+            .println();
+      }
 
       currentSegmentLength = 0;
       targetSegmentLength = segmentLengthFunction.sample(random);
-      if (targetSegmentLength > 3 && isVertical(growthDirection)) targetSegmentLength = 3;
+      if (targetSegmentLength > 0.9 && isVertical(growthDirection)) targetSegmentLength = 0.9;
     }
 
     return remainingBranches;
@@ -85,7 +104,7 @@ import org.jetbrains.annotations.NotNull;
     Vec3 outwardBias =
         currentLocation
             .getCenter()
-            .vectorTo(baseDirection.normalize().scale(currentLength))
+            .vectorTo(baseDirection.normalize().scale(currentLength).add(basePosition))
             .normalize()
             .multiply(this.outwardBias, this.upwardBias, this.outwardBias);
 
@@ -99,10 +118,9 @@ import org.jetbrains.annotations.NotNull;
     // TODO: calculate avoid bias
     Vec3 avoidBias = Vec3.ZERO;
 
-    // We leave the overall turn bias unscaled to accommodate turn algorithms that take the
+    // We leave the overall turn bias de-normalized to accommodate turn algorithms that take the
     // strength of the bias into account.
-    Vec3 turnBias = outwardBias.add(continueBias).add(avoidBias);
-    return turnBias;
+    return outwardBias.add(continueBias).add(avoidBias);
   }
 
   private boolean advance(@NotNull TreeSpace tree) {

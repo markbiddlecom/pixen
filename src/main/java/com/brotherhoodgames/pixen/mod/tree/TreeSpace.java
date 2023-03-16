@@ -30,7 +30,7 @@ public class TreeSpace {
   /*package*/ TreeSpace(double trunkBaseRadius) {
     this.trunkBaseRadius = trunkBaseRadius;
     this.maxTreeRadius =
-        (int) Math.min(GiantRedwoodGenerator.MAX_TREE_RADIUS, Math.ceil(trunkBaseRadius * 3));
+        (int) Math.min(GiantRedwoodGenerator.MAX_TREE_RADIUS, Math.ceil(trunkBaseRadius * 10));
     this.maxSliceIndex = maxTreeRadius * 2 + 1;
     this.slices = Lists.newArrayList();
   }

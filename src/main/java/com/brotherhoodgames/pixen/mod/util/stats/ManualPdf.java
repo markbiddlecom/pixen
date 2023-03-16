@@ -1,5 +1,6 @@
 package com.brotherhoodgames.pixen.mod.util.stats;
 
+import com.brotherhoodgames.pixen.mod.util.NonnullFunction;
 import com.google.common.collect.ImmutableList;
 import java.util.Collection;
 import java.util.Collections;
@@ -7,6 +8,7 @@ import java.util.stream.DoubleStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import net.minecraft.util.RandomSource;
+import org.jetbrains.annotations.NotNull;
 
 public class ManualPdf implements Pdf {
   private final ImmutableList<Double> pdf;
@@ -67,5 +69,24 @@ public class ManualPdf implements Pdf {
       i = -i - 1;
     }
     return (double) i / cdf.size();
+  }
+
+  @NotNull
+  @Override
+  public NonnullFunction<Double, Double> toFunction(
+      double domainStart, double domain, double rangeStart, double range) {
+    final double[] min = {pdf.get(0)}, max = {pdf.get(0)};
+    pdf.forEach(
+        d -> {
+          if (d < min[0]) min[0] = d;
+          if (d > max[0]) max[0] = d;
+        });
+    final double existingRangeStart = min[0];
+    final double existingRange = max[0] - min[0];
+    return x -> {
+      double normalizedX = (x - domainStart) / domain;
+      double normalizedSample = (sample(normalizedX) - existingRangeStart) / existingRange;
+      return rangeStart + range * normalizedSample;
+    };
   }
 }

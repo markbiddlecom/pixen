@@ -11,9 +11,10 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
 
 public class GiantRedwoodGenerator {
-  public static final int MAX_TREE_RADIUS = 40;
+  public static final int MAX_TREE_RADIUS = 60;
   public static final int MAX_TREE_HEIGHT = 200;
   public static final int MAX_BRANCH_ITERATIONS = 1000;
 
@@ -153,11 +154,9 @@ public class GiantRedwoodGenerator {
     // longest where they're most likely to grow. Finally, the default output is scaled by sampling
     // the branch length function.
     double targetLength =
-        tree.maxTreeRadius
-            * parameters
+        parameters
                 .branchHeightDistribution
-                .toFunction(
-                    0, tree.getTrunkHeight(), tree.maxTreeRadius * 0.25, tree.maxTreeRadius * 0.75)
+                .toFunction(0, tree.getTrunkHeight(), 0.5, 0.5)
                 .apply((double) slice.y)
             * parameters.branchLength.sample(random);
 
@@ -174,23 +173,46 @@ public class GiantRedwoodGenerator {
     while (currentLocation.length() < maxSearchDistance && slice.cell(currentLocation).isFilled()) {
       currentLocation = currentLocation.add(searchDirection);
     }
-    // TODO: move setting this to the branch class so it can accommodate leaves and such
-    slice.cell(currentLocation).set(TreeBlock.LOG);
+    BlockPos startPos = new BlockPos(currentLocation.x, slice.y, currentLocation.y);
 
     // Pick the starting orientation using the cardinal direction closest (via subtraction) to the
-    // selected growth direction.
-    final Vec3 searchDirectionNegatedNormalized =
-        new Vec3(searchDirection.x, 0, searchDirection.y).normalize().scale(-1);
+    // selected growth direction, and then apply the vertical deflection.
+    final Vec3 searchDirNormalized = new Vec3(searchDirection.x, 0, searchDirection.y).normalize();
+    Vector3f deflectionAxis = searchDirNormalized.toVector3f().rotateY((float) -Math.PI / 2);
+    Vec3 baseDirection =
+        new Vec3(
+            searchDirNormalized
+                .toVector3f()
+                .rotateAxis(
+                    (float) parameters.branchYDeflectionRadians.sample(random),
+                    deflectionAxis.x,
+                    deflectionAxis.y,
+                    deflectionAxis.z));
     Vec3 growthDirection =
         Stream.of(NORTH, EAST, SOUTH, WEST)
-            .min(Comparator.comparing(dir -> searchDirectionNegatedNormalized.add(dir).lengthSqr()))
+            .min(Comparator.comparing(dir -> searchDirNormalized.vectorTo(dir).lengthSqr()))
             .orElse(NORTH);
+
+    System.out
+        .printf(
+            ">>> Tree branch: %.2f @ (%.0f, %.0f) -> (%.4f, %.4f, %.4f) via (%.0f, %.0f, %.0f)",
+            targetLength,
+            currentLocation.x,
+            currentLocation.y,
+            baseDirection.x,
+            baseDirection.y,
+            baseDirection.z,
+            growthDirection.x,
+            growthDirection.y,
+            growthDirection.z)
+        .println();
 
     return Branch.builder()
         .fromParameters(random, parameters)
         .targetLength(targetLength)
-        .currentLocation(new BlockPos(currentLocation.x, slice.y, currentLocation.y))
-        .baseDirection(new Vec3(searchDirection.x, 0, searchDirection.y).normalize())
+        .basePosition(new Vec3(0, slice.y, 0))
+        .currentLocation(startPos)
+        .baseDirection(baseDirection)
         .growthDirection(growthDirection)
         .turnSelectionFunction(GiantRedwoodGenerator::turnSelectionFunction)
         .build();
@@ -204,9 +226,9 @@ public class GiantRedwoodGenerator {
       @Nonnull Vec3 turnBias) {
     // Choose whatever direction will move us closer to the turn bias.
     // TODO: make this a little more random
-    Vec3 negatedBias = turnBias.normalize().scale(-1);
-    return Stream.of(NORTH, EAST, SOUTH, WEST)
-        .min(Comparator.comparing(dir -> negatedBias.add(dir).lengthSqr()))
+    Vec3 normalizedBias = turnBias.normalize();
+    return Stream.of(NORTH, EAST, SOUTH, WEST, UP, DOWN)
+        .min(Comparator.comparing(dir -> normalizedBias.vectorTo(dir).lengthSqr()))
         .orElse(NORTH);
   }
 

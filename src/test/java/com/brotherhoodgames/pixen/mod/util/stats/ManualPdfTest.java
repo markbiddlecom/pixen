@@ -1,5 +1,6 @@
 package com.brotherhoodgames.pixen.mod.util.stats;
 
+import static com.brotherhoodgames.pixen.mod.util.stats.ManualPdf.EPSILON;
 import static com.brotherhoodgames.pixen.mod.util.stats.Pdf.domainFrom;
 import static com.brotherhoodgames.pixen.mod.util.stats.Pdf.rangeFrom;
 import static org.junit.jupiter.api.Assertions.assertAll;
@@ -11,8 +12,6 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class ManualPdfTest {
-  static final double EPSILON = 1e-9;
-
   @ParameterizedTest
   @CsvSource({"0.0, 0.0", "0.5, 0.0", "1.0, 1.0", "2.0, 0.0"})
   void testSamplePdfSingleColumn(double x, double expected) {

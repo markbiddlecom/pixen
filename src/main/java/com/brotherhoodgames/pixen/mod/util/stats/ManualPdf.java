@@ -67,13 +67,21 @@ public class ManualPdf implements Pdf {
             .collect(ImmutableList.toImmutableList());
     this.cdf = cdf.build();
 
-    if (Math.abs(1.0 - total[0]) > 1e-9) {
+    if (Math.abs(1.0 - total[0]) > EPSILON) {
       throw new IllegalArgumentException("Distribution stream did not sum to 1.0");
     } else if (nullElement[0]) {
       throw new NullPointerException("Distribution contained at least one null element");
     } else if (invalid[0] != null) {
       throw new IllegalArgumentException("Distribution contained an invalid element " + invalid[0]);
     }
+  }
+
+  public @Nonnull double[] pdfToArray() {
+    return pdf.stream().mapToDouble(Double::doubleValue).toArray();
+  }
+
+  public @Nonnull double[] cdfToArray() {
+    return cdf.stream().mapToDouble(Double::doubleValue).toArray();
   }
 
   @Override

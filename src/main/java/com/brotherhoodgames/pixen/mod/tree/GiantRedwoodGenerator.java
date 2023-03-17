@@ -119,7 +119,7 @@ public class GiantRedwoodGenerator {
     int branchCount = (int) parameters.branchCount.sample(random);
     double branchSeparation = (Math.PI * 2) / (branchCount + 1);
 
-    List<Branch> branches =
+    List<IterativeGenerator> branches =
         IntStream.range(0, branchCount)
             .mapToObj(
                 branchIndex ->
@@ -134,11 +134,12 @@ public class GiantRedwoodGenerator {
 
     int i = 0;
     while (!branches.isEmpty() && i++ < MAX_BRANCH_ITERATIONS) {
-      branches = branches.stream().flatMap(b -> b.crawl(random, tree).stream()).toList();
+      branches =
+          branches.stream().unordered().parallel().flatMap(b -> b.iterate(random, tree)).toList();
     }
   }
 
-  private static @Nonnull Branch initializeBranch(
+  private static @Nonnull IterativeGenerator initializeBranch(
       @Nonnull GiantRedwoodGenerationParameters parameters,
       @Nonnull TreeSpace tree,
       @Nonnull RandomSource random,

@@ -1,5 +1,9 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
+import static com.brotherhoodgames.pixen.mod.util.stats.RandomVariables.confidenceInterval;
+import static com.brotherhoodgames.pixen.mod.util.stats.RandomVariables.constant;
+import static com.brotherhoodgames.pixen.mod.util.stats.RandomVariables.range;
+
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.Pdfs;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
@@ -26,17 +30,17 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
               RandomVariables.confidenceInterval(0.8, Math.toRadians(0), Math.toRadians(20)))
           .trunkChordAngularVelocityDampening(RandomVariables.range(0.9, 1.0))
           .heartwoodDiameter(RandomVariables.confidenceInterval(0.999999, 2, 4))
-          .trunkSetback(RandomVariables.constant(0.01))
+          .trunkSetback(constant(0.01))
           .trunkSetbackAcceleration(RandomVariables.confidenceInterval(0.98, 0.0005, 0.003))
           .branchCount(RandomVariables.range(6, 12))
           .branchLength(RandomVariables.confidenceInterval(0.8, 15, 20))
-          .branchStraightnessBias(RandomVariables.constant(0.1))
-          .branchSeparationBias(RandomVariables.constant(3.0))
-          .branchRadialBias(RandomVariables.constant(1.0))
-          .branchUpwardBias(RandomVariables.constant(0.8))
+          .branchStraightnessBias(constant(0.1))
+          .branchSeparationBias(constant(3.0))
+          .branchRadialBias(constant(1.0))
+          .branchUpwardBias(constant(0.8))
           .branchSegmentLength(RandomVariables.confidenceInterval(0.9, 1.5, 2.5))
           .branchSplitProbabilityScalar(RandomVariables.range(0.3, 0.5))
-          .branchSplitMinimumFirstSegmentLength(RandomVariables.constant(4))
+          .branchSplitMinimumFirstSegmentLength(constant(4))
           .branchYDeflectionRadians(
               RandomVariables.confidenceInterval(0.99, Math.toRadians(-5.0), Math.toRadians(15)))
           .branchHeightDistribution(
@@ -57,6 +61,10 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
                       + "            *               ************                             \n"
                       + "           *                            *******                      \n"
                       + "          *                                    ****                  \n"))
+          .leafClusterAtSplitProbability(constant(0.3))
+          .leafClusterDropOffProbability(constant(0.1))
+          .leafClusterNodeCount(range(1, 4))
+          .leafClusterRadius(confidenceInterval(0.8, 4, 6))
           .build();
 
   /*package*/ final @Nonnull RandomVariable trunkDiameter;
@@ -85,4 +93,9 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
   /*package*/ final @Nonnull RandomVariable branchYDeflectionRadians;
   /*package*/ final @Nonnull Pdf branchHeightDistribution;
   /*package*/ final @Nonnull Pdf branchSplitDistribution;
+
+  /*package*/ final @Nonnull RandomVariable leafClusterAtSplitProbability;
+  /*package*/ final @Nonnull RandomVariable leafClusterDropOffProbability;
+  /*package*/ final @Nonnull RandomVariable leafClusterNodeCount;
+  /*package*/ final @Nonnull RandomVariable leafClusterRadius;
 }

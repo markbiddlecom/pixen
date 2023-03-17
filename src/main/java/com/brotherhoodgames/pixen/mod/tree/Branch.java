@@ -6,9 +6,7 @@ import static com.brotherhoodgames.pixen.mod.util.stats.Pdf.rangeFrom;
 import com.brotherhoodgames.pixen.mod.util.Randomness;
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
-import com.google.common.collect.Lists;
-import java.util.Collections;
-import java.util.List;
+import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import lombok.Builder;
@@ -20,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
 
 @Data
 @Builder(builderClassName = "Builder")
-/*package*/ class Branch {
+/*package*/ class Branch implements IterativeGenerator {
   final @Nullable Branch parent;
   double currentLength;
   double currentSegmentLength;
@@ -42,17 +40,19 @@ import org.jetbrains.annotations.NotNull;
   final @Nonnull RandomVariable segmentLengthFunction;
   final @Nonnull TurnSelectionFunction turnSelectionFunction;
 
-  @Nonnull
-  List<Branch> crawl(@Nonnull RandomSource random, @Nonnull TreeSpace tree) {
+  @Override
+  public @Nonnull Stream<IterativeGenerator> iterate(
+      @Nonnull RandomSource random, @Nonnull TreeSpace tree) {
     tree.setIfEmpty(currentLocation, GiantRedwoodGenerator.TreeBlock.LOG);
 
     if (!advance(tree)) {
       // TODO: Apply leaves
       // This branch is finished
-      return Collections.emptyList();
+      return Stream.empty();
     }
 
-    List<Branch> remainingBranches = Lists.newArrayList(this);
+    Stream.Builder<IterativeGenerator> remainingGenerators =
+        Stream.<IterativeGenerator>builder().add(this);
     double splitP =
         splitProbabilityScalar
             * splitProbabilityFunction
@@ -61,7 +61,7 @@ import org.jetbrains.annotations.NotNull;
 
     if (random.nextDouble() <= splitP) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT);
-      remainingBranches.add(initializeSplit(random));
+      remainingGenerators.add(initializeSplit(random));
     } else if (currentSegmentLength >= targetSegmentLength) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
 
@@ -73,7 +73,7 @@ import org.jetbrains.annotations.NotNull;
       targetSegmentLength = sampleTargetLength(random, growthDirection);
     }
 
-    return remainingBranches;
+    return remainingGenerators.build();
   }
 
   private double sampleTargetLength(

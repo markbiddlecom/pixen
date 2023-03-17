@@ -93,12 +93,12 @@ public class PixenMod {
         ImmutableMap.<GiantRedwoodGenerator.TreeBlock, BlockState>builder()
             .put(GiantRedwoodGenerator.TreeBlock.BARK, Blocks.SPRUCE_WOOD.defaultBlockState())
             .put(GiantRedwoodGenerator.TreeBlock.LOG, Blocks.SPRUCE_WOOD.defaultBlockState())
-            .put(
-                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT,
-                Blocks.RED_WOOL.defaultBlockState())
-            .put(
-                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN,
-                Blocks.BLUE_WOOL.defaultBlockState())
+            //            .put(
+            //                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT,
+            //                Blocks.RED_WOOL.defaultBlockState())
+            //            .put(
+            //                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN,
+            //                Blocks.BLUE_WOOL.defaultBlockState())
             .build();
 
     @SubscribeEvent
@@ -124,14 +124,13 @@ public class PixenMod {
                             where.getX(),
                             where.getY(),
                             where.getZ(),
-                            RandomSource.create(),
-                            (b, x, y, z) -> {
-                              mc.level.setBlock(
-                                  new BlockPos(x, y, z),
-                                  Optional.ofNullable(TREE_BLOCKS.get(b))
-                                      .orElse(Blocks.STRIPPED_SPRUCE_WOOD.defaultBlockState()),
-                                  3);
-                            }));
+                            RandomSource.createThreadSafe(),
+                            (b, x, y, z) ->
+                                mc.level.setBlock(
+                                    new BlockPos(x, y, z),
+                                    Optional.ofNullable(TREE_BLOCKS.get(b))
+                                        .orElse(Blocks.SPRUCE_WOOD.defaultBlockState()),
+                                    3)));
       }
     }
   }

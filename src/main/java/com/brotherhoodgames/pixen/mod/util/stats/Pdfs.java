@@ -7,12 +7,16 @@ import java.util.stream.IntStream;
 import javax.annotation.Nonnull;
 
 public class Pdfs {
-  public static @Nonnull Pdf fromHistogram(@Nonnull String histogram) {
+  public static @Nonnull ManualPdf fromHistogram(@Nonnull String histogram) {
     return fromHistogram(
         histogram, -1, c -> c == '\r' || c == '\n', c -> !Character.isWhitespace(c));
   }
 
-  public static @Nonnull Pdf fromHistogram(
+  public static @Nonnull ManualPdf fromHistogramLines(@Nonnull String... histogramLines) {
+    return fromHistogram(String.join("\n", histogramLines));
+  }
+
+  public static @Nonnull ManualPdf fromHistogram(
       @Nonnull String histogram,
       int yAxisDirection,
       @Nonnull IntPredicate lineSeparator,

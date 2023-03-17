@@ -11,7 +11,9 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec2;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * A data container that describes the structure of a giant Redwood while it is being generated.
@@ -30,7 +32,7 @@ public class TreeSpace {
   /*package*/ TreeSpace(double trunkBaseRadius) {
     this.trunkBaseRadius = trunkBaseRadius;
     this.maxTreeRadius =
-        (int) Math.min(GiantRedwoodGenerator.MAX_TREE_RADIUS, Math.ceil(trunkBaseRadius * 10));
+        (int) Math.min(GiantRedwoodGenerator.MAX_TREE_RADIUS, Math.ceil(trunkBaseRadius * 6));
     this.maxSliceIndex = maxTreeRadius * 2 + 1;
     this.slices = Lists.newArrayList();
   }
@@ -54,6 +56,13 @@ public class TreeSpace {
   public boolean areValidTreeCoordinates(int treeX, int treeY, int treeZ) {
     return areValidSliceIndices(
         treeCoordinateToUnsafeSliceIndex(treeX), treeY, treeCoordinateToUnsafeSliceIndex(treeZ));
+  }
+
+  /**
+   * @return a (potentially invalid) tree cell representing the space at the given tree coordinates.
+   */
+  public @Nonnull Cell cell(@Nonnull BlockPos treeCoordinates) {
+    return cell(treeCoordinates.getX(), treeCoordinates.getY(), treeCoordinates.getZ());
   }
 
   /**
@@ -170,7 +179,8 @@ public class TreeSpace {
 
   /*package*/ @Nullable
   GiantRedwoodGenerator.TreeBlock getFromSliceCoords(int sliceXIndex, int treeY, int sliceZIndex) {
-    if (!areValidSliceIndices(sliceXIndex, treeY, sliceZIndex)) return null;
+    if (treeY >= slices.size() || !areValidSliceIndices(sliceXIndex, treeY, sliceZIndex))
+      return null;
     else return slices.get(treeY)[sliceXIndex][sliceZIndex];
   }
 
@@ -182,6 +192,7 @@ public class TreeSpace {
       @Nullable GiantRedwoodGenerator.TreeBlock block) {
     if (!areValidSliceIndices(sliceXIndex, treeY, sliceZIndex)) return null;
     else {
+      if (treeY >= slices.size()) slice(treeY).allocate();
       GiantRedwoodGenerator.TreeBlock prev = slices.get(treeY)[sliceXIndex][sliceZIndex];
       slices.get(treeY)[sliceXIndex][sliceZIndex] = block;
       return prev;
@@ -358,6 +369,14 @@ public class TreeSpace {
     }
 
     /**
+     * @return {@code true} IFF these coordinates reference a valid location within the parent tree
+     *     space.
+     */
+    public boolean isValid() {
+      return tree.areValidSliceIndices(sliceXIndex, y, sliceZIndex);
+    }
+
+    /**
      * @return the tree block stored at this location within the tree space, or {@code null} when
      *     the cell is not valid or when the space does not define a specific block.
      */
@@ -460,6 +479,40 @@ public class TreeSpace {
     }
 
     /**
+     * @return a (potentially empty) stream of non-null, valid tree cells surrounding this cell in
+     *     the parent tree space. The returned envelope is a cube with side length {@code
+     *     envelopeSize} and centered on this cell.
+     */
+    public @Nonnull Stream<Cell> streamCellEnvelope(double envelopeSize) {
+      final double halfEnvelope = envelopeSize / 2;
+
+      final int startSx = (int) Math.round(sliceXIndex - halfEnvelope);
+      final int endSx = (int) Math.round(sliceXIndex + halfEnvelope);
+      final int startSz = (int) Math.round(sliceZIndex - halfEnvelope);
+      final int endSz = (int) Math.round(sliceZIndex + halfEnvelope);
+      final int startY = (int) Math.round(y - halfEnvelope);
+      final int endY = (int) Math.round(y + halfEnvelope);
+
+      return Stream.iterate(
+              new Cell(tree, startSx, startY, startSz),
+              cell -> cell.sliceZIndex < endSz && (cell.y < endY || cell.sliceXIndex < endSx),
+              cell -> {
+                int sx = cell.sliceXIndex, y = cell.y, sz = cell.sliceZIndex;
+                sx++;
+                if (sx >= endSx) {
+                  sx = 0;
+                  y++;
+                  if (y >= endY) {
+                    y = 0;
+                    sz++;
+                  }
+                }
+                return new Cell(tree, sx, y, sz);
+              })
+          .filter(Cell::isValid);
+    }
+
+    /**
      * @return an optional wrapping the valid cell location immediately to the {@linkplain
      *     net.minecraft.core.Direction#NORTH north} of this location, or an empty optional if that
      *     cell is not valid within the tree space.
@@ -501,6 +554,41 @@ public class TreeSpace {
     public @Nonnull Optional<Cell> west() {
       return Optional.ofNullable(
           sliceXIndex > 0 ? new Cell(tree, sliceXIndex - 1, y, sliceZIndex) : null);
+    }
+
+    /**
+     * @return the square of the distance between this and the given location.
+     */
+    public double distanceToSqr(@Nonnull BlockPos treeCoordinates) {
+      int dx = treeX - treeCoordinates.getX();
+      int dy = y - treeCoordinates.getY();
+      int dz = treeZ - treeCoordinates.getZ();
+      return dx * dx + dy * dy + dz * dz;
+    }
+
+    /**
+     * @return the square of the distance between this and the given location.
+     */
+    public double distanceToSqr(@Nonnull Vec3 target) {
+      return toTreePos().getCenter().distanceToSqr(target);
+    }
+
+    /**
+     * @return a random point contained within this coordinate based on deviation from the center
+     *     point.
+     */
+    public @Nonnull Vec3 randomContainedTreeCoordinate(@Nonnull RandomSource randomSource) {
+      double dx = -0.5 + randomSource.nextDouble();
+      double dy = -0.5 + randomSource.nextDouble();
+      double dz = -0.5 + randomSource.nextDouble();
+      return toTreePos().getCenter().add(dx, dy, dz);
+    }
+
+    /**
+     * @return a block position initialized to this location's coordinates in tree space.
+     */
+    public @Nonnull BlockPos toTreePos() {
+      return new BlockPos(treeX, y, treeZ);
     }
   }
 }

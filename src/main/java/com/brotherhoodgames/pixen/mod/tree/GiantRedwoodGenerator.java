@@ -8,7 +8,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
@@ -18,13 +17,6 @@ public class GiantRedwoodGenerator {
   public static final int MAX_TREE_RADIUS = 60;
   public static final int MAX_TREE_HEIGHT = 200;
   public static final int MAX_BRANCH_ITERATIONS = 1000;
-
-  /*package*/ static final Vec3 NORTH = Vec3.atLowerCornerOf(Direction.NORTH.getNormal());
-  /*package*/ static final Vec3 WEST = Vec3.atLowerCornerOf(Direction.WEST.getNormal());
-  /*package*/ static final Vec3 SOUTH = Vec3.atLowerCornerOf(Direction.SOUTH.getNormal());
-  /*package*/ static final Vec3 EAST = Vec3.atLowerCornerOf(Direction.EAST.getNormal());
-  /*package*/ static final Vec3 UP = Vec3.atLowerCornerOf(Direction.UP.getNormal());
-  /*package*/ static final Vec3 DOWN = Vec3.atLowerCornerOf(Direction.DOWN.getNormal());
 
   private final GiantRedwoodGenerationParameters parameters;
 
@@ -131,7 +123,13 @@ public class GiantRedwoodGenerator {
         IntStream.range(0, branchCount)
             .mapToObj(
                 branchIndex ->
-                    initializeBranch(parameters, tree, random, branchIndex, branchSeparation))
+                    initializeBranch(
+                        parameters,
+                        tree,
+                        random,
+                        branchIndex,
+                        random.nextDouble() * Math.toRadians(45),
+                        branchSeparation))
             .toList();
 
     int i = 0;
@@ -145,6 +143,7 @@ public class GiantRedwoodGenerator {
       @Nonnull TreeSpace tree,
       @Nonnull RandomSource random,
       int branchIndex,
+      double initialBranchAngle,
       double branchSeparation) {
     TreeSpace.Slice slice =
         tree.slice(
@@ -165,7 +164,7 @@ public class GiantRedwoodGenerator {
 
     // Find the starting position for the branch. Move out from the tree center along a set
     // direction until we hit an air block or until we've gone past the base radius.
-    double branchXzPlaneAngle = branchIndex * branchSeparation;
+    double branchXzPlaneAngle = initialBranchAngle + branchIndex * branchSeparation;
     Vec2 searchDirection =
         new Vec2((float) Math.sin(branchXzPlaneAngle), (float) Math.cos(branchXzPlaneAngle))
             // Scale down so that we have a better chance of finding the correct starting point
@@ -192,23 +191,13 @@ public class GiantRedwoodGenerator {
                     deflectionAxis.y,
                     deflectionAxis.z));
     Vec3 growthDirection =
-        Stream.of(NORTH, EAST, SOUTH, WEST)
+        Stream.of(
+                GrowthDirections.NORTH,
+                GrowthDirections.EAST,
+                GrowthDirections.SOUTH,
+                GrowthDirections.WEST)
             .min(Comparator.comparing(dir -> searchDirNormalized.vectorTo(dir).lengthSqr()))
-            .orElse(NORTH);
-
-    System.out
-        .printf(
-            ">>> Tree branch: %.2f @ (%.0f, %.0f) -> (%.4f, %.4f, %.4f) via (%.0f, %.0f, %.0f)",
-            targetLength,
-            currentLocation.x,
-            currentLocation.y,
-            baseDirection.x,
-            baseDirection.y,
-            baseDirection.z,
-            growthDirection.x,
-            growthDirection.y,
-            growthDirection.z)
-        .println();
+            .orElse(GrowthDirections.NORTH);
 
     return Branch.builder()
         .fromParameters(random, parameters)
@@ -230,9 +219,15 @@ public class GiantRedwoodGenerator {
     // Choose whatever direction will move us closer to the turn bias.
     // TODO: make this a little more random
     Vec3 normalizedBias = turnBias.normalize();
-    return Stream.of(NORTH, EAST, SOUTH, WEST, UP, DOWN)
+    return Stream.of(
+            GrowthDirections.NORTH,
+            GrowthDirections.EAST,
+            GrowthDirections.SOUTH,
+            GrowthDirections.WEST,
+            GrowthDirections.UP,
+            GrowthDirections.DOWN)
         .min(Comparator.comparing(dir -> normalizedBias.vectorTo(dir).lengthSqr()))
-        .orElse(NORTH);
+        .orElse(GrowthDirections.NORTH);
   }
 
   private static @Nonnull ImmutableList<TrunkChord> initializeRings(

@@ -1,5 +1,9 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
+import static com.brotherhoodgames.pixen.mod.util.stats.Pdf.domainFrom;
+import static com.brotherhoodgames.pixen.mod.util.stats.Pdf.rangeFrom;
+
+import com.brotherhoodgames.pixen.mod.util.Randomness;
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
 import com.google.common.collect.Lists;
@@ -31,6 +35,7 @@ import org.jetbrains.annotations.NotNull;
   final double upwardBias;
   final double continueBias;
   final double splitProbabilityScalar;
+  final double branchSplitMinimumFirstSegmentLength;
   final @Nonnull Vec3 baseDirection;
   final @Nonnull Vec3 basePosition;
   final @Nonnull Pdf splitProbabilityFunction;
@@ -49,55 +54,76 @@ import org.jetbrains.annotations.NotNull;
 
     List<Branch> remainingBranches = Lists.newArrayList(this);
     double splitP =
-        //        splitProbabilityScalar * splitProbabilityFunction.sample(currentLength /
-        // targetLength);
-        0;
+        splitProbabilityScalar
+            * splitProbabilityFunction
+                .pdfToFunction(domainFrom(0).to(targetLength), rangeFrom(0).to(1))
+                .apply(currentLength);
+
     if (random.nextDouble() <= splitP) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT);
-      remainingBranches.add(
-          Branch.builder()
-              .splitFrom(this)
-              .currentSegmentLength(0)
-              .targetSegmentLength(-1)
-              .currentThickness(1)
-              .growthDirection(
-                  growthDirection
-                      .cross(new Vec3(currentLocation.getX(), 0, currentLocation.getZ()))
-                      .normalize())
-              .build());
+      remainingBranches.add(initializeSplit(random));
     } else if (currentSegmentLength >= targetSegmentLength) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
 
-      Vec3 prevDir = growthDirection;
-      Vec3 turnBias = calculateTurnBias();
+      Vec3 turnBias = calculateTurnBias(random, tree);
       growthDirection =
           turnSelectionFunction.turn(random, currentLocation, growthDirection, turnBias);
-      if (growthDirection.vectorTo(prevDir).lengthSqr() > 1e-3) {
-        System.out
-            .printf(
-                "----> Branch turn from (%+.1f, %+.1f, %+.1f) to (%+.1f, %+.1f, %+.1f) via turn bias (%+.4f, %+.4f, %+.4f)",
-                prevDir.x,
-                prevDir.y,
-                prevDir.z,
-                growthDirection.x,
-                growthDirection.y,
-                growthDirection.z,
-                turnBias.x,
-                turnBias.y,
-                turnBias.z)
-            .println();
-      }
 
       currentSegmentLength = 0;
-      targetSegmentLength = segmentLengthFunction.sample(random);
-      if (targetSegmentLength > 0.9 && isVertical(growthDirection)) targetSegmentLength = 0.9;
+      targetSegmentLength = sampleTargetLength(random, growthDirection);
     }
 
     return remainingBranches;
   }
 
+  private double sampleTargetLength(
+      @Nonnull RandomSource random, @Nonnull Vec3 forGrowthDirection) {
+    double newTargetLength = segmentLengthFunction.sample(random);
+    if (newTargetLength > 0.9 && GrowthDirections.isVertical(forGrowthDirection)) return 0.9;
+    else return newTargetLength;
+  }
+
+  private @Nonnull Branch initializeSplit(@NotNull RandomSource random) {
+    // The new growth direction is picked at random from the cardinal directions, excluding the
+    // branch's current growth direction and its opposite, the vector in the direction of the tree's
+    // core, and the vector pointing back to branch's base position.
+    Vec3 newGrowthDirection =
+        Randomness.oneOf(
+                random,
+                growthDirection, // default to continuing along the same branch--should never happen
+                GrowthDirections.streamDirectionsExcludingNearest(
+                        currentLocation.getCenter().vectorTo(basePosition).normalize(),
+                        growthDirection,
+                        growthDirection.reverse(),
+                        currentLocation.getCenter().vectorTo(basePosition))
+                    .toList())
+            .normalize();
+
+    double newTargetSegmentLength =
+        Math.max(
+            branchSplitMinimumFirstSegmentLength, sampleTargetLength(random, newGrowthDirection));
+
+    // The new base direction is calculated as a normalized vector from the parent branch's center
+    // pointing to the first turn position for the new branch. (I.e., the turn position is projected
+    // outward to the target segment length and added to the current position's vector.)
+    Vec3 newBaseDirection =
+        basePosition
+            .vectorTo(currentLocation.getCenter())
+            .add(newGrowthDirection.scale(newTargetSegmentLength))
+            .normalize();
+
+    return Branch.builder()
+        .splitFrom(this)
+        .baseDirection(newBaseDirection)
+        .currentSegmentLength(0)
+        .targetSegmentLength(newTargetSegmentLength)
+        .currentThickness(1)
+        .growthDirection(newGrowthDirection)
+        .build();
+  }
+
   @NotNull
-  private Vec3 calculateTurnBias() {
+  private Vec3 calculateTurnBias(@Nonnull RandomSource random, @Nonnull TreeSpace tree) {
     // The outward bias is a vector that will return the branch to the position it *should* be if
     // it had travelled straight outwards along the base direction vector. The XZ direction is
     // weighted independently of the Y direction.
@@ -113,10 +139,39 @@ import org.jetbrains.annotations.NotNull;
     // the branch to override its turn directive.
     Vec3 continueBias = growthDirection.normalize().scale(this.continueBias);
 
-    // The avoidance bias is a vector that will move the branch's growth farthest away from all
-    // neighboring blocks.
-    // TODO: calculate avoid bias
-    Vec3 avoidBias = Vec3.ZERO;
+    // The avoidance bias is a vector that will move the branch's growth the farthest away from all
+    // neighboring blocks. It's calculated by producing a "push" vector for each block nearby the
+    // current location whose length is inversely related to the square of its distance, and then
+    // summing all push vectors.
+    final int MAX_AVOID_DISTANCE = 8;
+    final double MAX_DISTANCE_SQR = MAX_AVOID_DISTANCE * MAX_AVOID_DISTANCE;
+    final Vec3 center = currentLocation.getCenter();
+    Vec3 avoidBias =
+        tree.cell(currentLocation)
+            .streamCellEnvelope(MAX_AVOID_DISTANCE * 2)
+            .filter(
+                // Only consider cells with data, are within the distance radius, and that are
+                // farther away from the trunk than the current location. We're ignoring blocks that
+                // are closer to the trunk because the outward bias already effectively considers
+                // that and including them in this bias would skew more strongly towards straight
+                // outward growth.
+                cell ->
+                    cell.isFilled()
+                        && cell.distanceToSqr(basePosition)
+                            > currentLocation.getCenter().distanceToSqr(basePosition)
+                        && cell.distanceToSqr(currentLocation) < MAX_DISTANCE_SQR)
+            .map(
+                cell -> {
+                  // We're using a random contained point to increase the chances of an upward or
+                  // downward push when all entities are on the same plane as the current location.
+                  Vec3 point = cell.randomContainedTreeCoordinate(random);
+                  Vec3 force = point.vectorTo(center);
+                  double distanceSqr = force.lengthSqr();
+                  return force.normalize().scale(MAX_DISTANCE_SQR - distanceSqr);
+                })
+            .reduce(Vec3.ZERO, Vec3::add)
+            .normalize()
+            .scale(this.avoidBias);
 
     // We leave the overall turn bias de-normalized to accommodate turn algorithms that take the
     // strength of the bias into account.
@@ -165,10 +220,6 @@ import org.jetbrains.annotations.NotNull;
     return currentLength < targetLength;
   }
 
-  /*package*/ static boolean isVertical(@Nonnull Vec3 growthDirection) {
-    return growthDirection.multiply(0, 1, 0).length() >= 0.8;
-  }
-
   static class Builder {
     @Nonnull
     Builder fromParameters(
@@ -180,6 +231,8 @@ import org.jetbrains.annotations.NotNull;
           .avoidBias(parameters.branchSeparationBias.sample(r))
           .upwardBias(parameters.branchUpwardBias.sample(r))
           .splitProbabilityScalar(parameters.branchSplitProbabilityScalar.sample(r))
+          .branchSplitMinimumFirstSegmentLength(
+              parameters.branchSplitMinimumFirstSegmentLength.sample(r))
           .splitProbabilityFunction(parameters.branchSplitDistribution)
           .segmentLengthFunction(parameters.branchSegmentLength);
     }
@@ -187,6 +240,8 @@ import org.jetbrains.annotations.NotNull;
     @Nonnull
     Builder splitFrom(@Nonnull Branch parent) {
       return parent(parent)
+          .baseDirection(parent.baseDirection)
+          .basePosition(parent.basePosition)
           .currentLength(parent.currentLength)
           .growthDirection(parent.growthDirection)
           .currentLocation(parent.currentLocation)
@@ -196,6 +251,7 @@ import org.jetbrains.annotations.NotNull;
           .upwardBias(parent.upwardBias)
           .continueBias(parent.continueBias)
           .splitProbabilityFunction(parent.splitProbabilityFunction)
+          .branchSplitMinimumFirstSegmentLength(branchSplitMinimumFirstSegmentLength)
           .segmentLengthFunction(parent.segmentLengthFunction)
           .turnSelectionFunction(parent.turnSelectionFunction);
     }

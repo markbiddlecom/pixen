@@ -91,14 +91,18 @@ public class PixenMod {
   public static class ClientInputEvents {
     private static final ImmutableMap<GiantRedwoodGenerator.TreeBlock, BlockState> TREE_BLOCKS =
         ImmutableMap.<GiantRedwoodGenerator.TreeBlock, BlockState>builder()
+            .put(
+                GiantRedwoodGenerator.TreeBlock.WOOD,
+                Blocks.STRIPPED_SPRUCE_WOOD.defaultBlockState())
             .put(GiantRedwoodGenerator.TreeBlock.BARK, Blocks.SPRUCE_WOOD.defaultBlockState())
             .put(GiantRedwoodGenerator.TreeBlock.LOG, Blocks.SPRUCE_WOOD.defaultBlockState())
-            //            .put(
-            //                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT,
-            //                Blocks.RED_WOOL.defaultBlockState())
-            //            .put(
-            //                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN,
-            //                Blocks.BLUE_WOOL.defaultBlockState())
+            .put(GiantRedwoodGenerator.TreeBlock.LEAVES, Blocks.OAK_LEAVES.defaultBlockState())
+            .put(
+                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT,
+                Blocks.RED_WOOL.defaultBlockState())
+            .put(
+                GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN,
+                Blocks.BLUE_WOOL.defaultBlockState())
             .build();
 
     @SubscribeEvent
@@ -128,7 +132,7 @@ public class PixenMod {
                             (b, x, y, z) ->
                                 mc.level.setBlock(
                                     new BlockPos(x, y, z),
-                                    Optional.ofNullable(TREE_BLOCKS.get(b))
+                                    Optional.ofNullable(TREE_BLOCKS.get(b.actual()))
                                         .orElse(Blocks.SPRUCE_WOOD.defaultBlockState()),
                                     3)));
       }

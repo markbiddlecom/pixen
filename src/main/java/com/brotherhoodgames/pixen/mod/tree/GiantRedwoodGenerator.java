@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import lombok.Getter;
+import lombok.ToString;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec2;
@@ -120,22 +123,29 @@ public class GiantRedwoodGenerator {
     double branchSeparation = (Math.PI * 2) / (branchCount + 1);
 
     List<IterativeGenerator> branches =
-        IntStream.range(0, branchCount)
-            .mapToObj(
-                branchIndex ->
-                    initializeBranch(
-                        parameters,
-                        tree,
-                        random,
-                        branchIndex,
-                        random.nextDouble() * Math.toRadians(45),
-                        branchSeparation))
+        Stream.concat(
+                IntStream.range(0, branchCount)
+                    .mapToObj(
+                        branchIndex ->
+                            initializeBranch(
+                                parameters,
+                                tree,
+                                random,
+                                branchIndex,
+                                random.nextDouble() * Math.toRadians(45),
+                                branchSeparation)),
+                LeafNode.initializeAndStreamLeafNodes(
+                    random, new BlockPos(0, tree.getTrunkHeight(), 0), parameters))
             .toList();
 
     int i = 0;
     while (!branches.isEmpty() && i++ < MAX_BRANCH_ITERATIONS) {
       branches =
-          branches.stream().unordered().parallel().flatMap(b -> b.iterate(random, tree)).toList();
+          branches.stream()
+              .unordered()
+              .parallel()
+              .flatMap(b -> b.iterate(random, parameters, tree))
+              .toList();
     }
   }
 
@@ -274,19 +284,46 @@ public class GiantRedwoodGenerator {
     return chords.build();
   }
 
+  @Getter
+  @ToString
   public enum TreeBlock {
-    AIR,
+    AIR(null, true),
+    DEAD_LEAF_SPACE(AIR, true),
+
     EXTERNAL,
+
     BARK,
     WOOD,
     HEARTWOOD,
     LOG,
-    MOSSY_BARK,
-    COMPOSTED_LOG,
     LEAVES,
     AMBER,
-    DEBUG_LOG_TURN,
-    DEBUG_LOG_SPLIT
+
+    MOSSY_BARK(BARK, false),
+    COMPOSTED_LOG(LOG, false),
+
+    DEBUG_LOG_TURN(LOG, false),
+    DEBUG_LOG_SPLIT(LOG, false),
+    ;
+
+    private final @Nullable TreeBlock mappedBlock;
+    private final boolean isEmpty;
+
+    TreeBlock() {
+      this(null, false);
+    }
+
+    TreeBlock(@Nullable TreeBlock mappedBlock, boolean isEmpty) {
+      this.mappedBlock = mappedBlock;
+      this.isEmpty = isEmpty;
+    }
+
+    @Nonnull
+    public TreeBlock actual() {
+      TreeBlock r = this;
+      while (r.mappedBlock != null) r = r.mappedBlock;
+      return r;
+    }
   }
 
   @FunctionalInterface

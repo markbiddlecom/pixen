@@ -7,7 +7,6 @@ import static com.brotherhoodgames.pixen.mod.util.stats.RandomVariables.range;
 import com.brotherhoodgames.pixen.mod.util.stats.Pdf;
 import com.brotherhoodgames.pixen.mod.util.stats.Pdfs;
 import com.brotherhoodgames.pixen.mod.util.stats.RandomVariable;
-import com.brotherhoodgames.pixen.mod.util.stats.RandomVariables;
 import java.io.Serializable;
 import javax.annotation.Nonnull;
 import lombok.Builder;
@@ -18,31 +17,30 @@ import lombok.Data;
 public final class GiantRedwoodGenerationParameters implements Serializable {
   public static final GiantRedwoodGenerationParameters DEFAULT_PARAMETERS =
       builder()
-          .trunkDiameter(RandomVariables.confidenceInterval(0.99, 6, 14))
-          .trunkChords(RandomVariables.confidenceInterval(0.8, 2, 4))
-          .trunkChordScale(RandomVariables.range(0.2, 0.6))
-          .trunkChordRadii(RandomVariables.range(0, 0.8))
-          .trunkChordEccentricity(RandomVariables.range(0.0, 0.2))
-          .trunkChordGravity(RandomVariables.confidenceInterval(0.8, 0.1, 0.2).clamp(0.05, 0.6))
-          .trunkChordInitialVelocityMagnitude(RandomVariables.confidenceInterval(0.9, 0, 0.1))
-          .trunkChordInitialVelocityDeflection(RandomVariables.range(-Math.PI / 8, Math.PI / 8))
-          .trunkChordAngularVelocity(
-              RandomVariables.confidenceInterval(0.8, Math.toRadians(0), Math.toRadians(20)))
-          .trunkChordAngularVelocityDampening(RandomVariables.range(0.9, 1.0))
-          .heartwoodDiameter(RandomVariables.confidenceInterval(0.999999, 2, 4))
-          .trunkSetback(constant(0.01))
-          .trunkSetbackAcceleration(RandomVariables.confidenceInterval(0.98, 0.0005, 0.003))
-          .branchCount(RandomVariables.range(6, 12))
-          .branchLength(RandomVariables.confidenceInterval(0.8, 15, 20))
-          .branchStraightnessBias(constant(0.1))
+          .trunkDiameter(confidenceInterval(0.99, 6, 12))
+          .trunkChords(confidenceInterval(0.8, 2, 4))
+          .trunkChordScale(range(0.2, 0.6))
+          .trunkChordRadii(range(0, 0.8))
+          .trunkChordEccentricity(range(0.0, 0.2))
+          .trunkChordGravity(confidenceInterval(0.8, 0.2, 0.3).clamp(0.05, 0.6))
+          .trunkChordInitialVelocityMagnitude(confidenceInterval(0.9, 0, 0.1))
+          .trunkChordInitialVelocityDeflection(range(-Math.PI / 8, Math.PI / 8))
+          .trunkChordAngularVelocity(confidenceInterval(0.8, Math.toRadians(0), Math.toRadians(20)))
+          .trunkChordAngularVelocityDampening(range(0.9, 1.0))
+          .heartwoodDiameter(confidenceInterval(0.999999, 2, 4))
+          .trunkSetback(constant(0.008))
+          .trunkSetbackAcceleration(confidenceInterval(0.98, 0.0005, 0.003))
+          .branchCount(range(12, 14))
+          .branchLength(confidenceInterval(0.9, 13, 15))
+          .branchStraightnessBias(constant(0.2))
           .branchSeparationBias(constant(3.0))
           .branchRadialBias(constant(1.0))
           .branchUpwardBias(constant(0.8))
-          .branchSegmentLength(RandomVariables.confidenceInterval(0.9, 1.5, 2.5))
-          .branchSplitProbabilityScalar(RandomVariables.range(0.3, 0.5))
-          .branchSplitMinimumFirstSegmentLength(constant(4))
+          .branchSegmentLength(range(2, 4))
+          .branchSplitProbabilityScalar(range(0.2, 0.4))
+          .branchSplitMinimumFirstSegmentLength(constant(3))
           .branchYDeflectionRadians(
-              RandomVariables.confidenceInterval(0.99, Math.toRadians(-5.0), Math.toRadians(15)))
+              confidenceInterval(0.99, Math.toRadians(-5.0), Math.toRadians(15)))
           .branchHeightDistribution(
               Pdfs.fromHistogram(
                   ""
@@ -62,9 +60,9 @@ public final class GiantRedwoodGenerationParameters implements Serializable {
                       + "           *                            *******                      \n"
                       + "          *                                    ****                  \n"))
           .leafClusterAtSplitProbability(constant(0.3))
-          .leafClusterDropOffProbability(constant(0.1))
+          .leafClusterDropOffProbability(constant(0.2))
           .leafClusterNodeCount(range(1, 4))
-          .leafClusterRadius(confidenceInterval(0.8, 4, 6))
+          .leafClusterRadius(confidenceInterval(0.9, 3, 4))
           .build();
 
   /*package*/ final @Nonnull RandomVariable trunkDiameter;

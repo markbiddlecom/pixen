@@ -42,13 +42,14 @@ import org.jetbrains.annotations.NotNull;
 
   @Override
   public @Nonnull Stream<IterativeGenerator> iterate(
-      @Nonnull RandomSource random, @Nonnull TreeSpace tree) {
+      @Nonnull RandomSource random,
+      @Nonnull GiantRedwoodGenerationParameters parameters,
+      @Nonnull TreeSpace tree) {
     tree.setIfEmpty(currentLocation, GiantRedwoodGenerator.TreeBlock.LOG);
 
     if (!advance(tree)) {
-      // TODO: Apply leaves
       // This branch is finished
-      return Stream.empty();
+      return LeafNode.initializeAndStreamLeafNodes(random, currentLocation, parameters);
     }
 
     Stream.Builder<IterativeGenerator> remainingGenerators =
@@ -62,6 +63,8 @@ import org.jetbrains.annotations.NotNull;
     if (random.nextDouble() <= splitP) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_SPLIT);
       remainingGenerators.add(initializeSplit(random));
+      if (random.nextDouble() < parameters.leafClusterAtSplitProbability.sample(random))
+        LeafNode.initializeLeafNodes(random, currentLocation, parameters, remainingGenerators);
     } else if (currentSegmentLength >= targetSegmentLength) {
       tree.set(currentLocation, GiantRedwoodGenerator.TreeBlock.DEBUG_LOG_TURN);
 
@@ -115,6 +118,7 @@ import org.jetbrains.annotations.NotNull;
     return Branch.builder()
         .splitFrom(this)
         .baseDirection(newBaseDirection)
+        .currentLocation(new BlockPos(currentLocation.getCenter().add(newGrowthDirection)))
         .currentSegmentLength(0)
         .targetSegmentLength(newTargetSegmentLength)
         .currentThickness(1)

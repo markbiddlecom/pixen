@@ -1,8 +1,14 @@
 package com.brotherhoodgames.pixen.mod.tree;
 
+import static com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.MAX_TREE_HEIGHT;
+import static com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.TreeBlock.AIR;
+
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -25,6 +31,9 @@ public class TreeSpace {
   /*package*/ final double trunkBaseRadius;
   /*package*/ final int maxTreeRadius;
   /*package*/ final int maxSliceIndex;
+
+  private final ImmutableList<Object> locks =
+      IntStream.range(0, 10).mapToObj(i -> new Object()).collect(ImmutableList.toImmutableList());
 
   private final List<GiantRedwoodGenerator.TreeBlock[][]> slices;
   private int trunkHeight;
@@ -174,7 +183,12 @@ public class TreeSpace {
         && sliceZIndex >= 0
         && sliceZIndex < maxSliceIndex
         && treeY >= 0
-        && treeY < GiantRedwoodGenerator.MAX_TREE_HEIGHT;
+        && treeY < MAX_TREE_HEIGHT;
+  }
+
+  private @Nonnull Object getSyncLockFromSliceCoords(int sliceXIndex, int treeY, int sliceZIndex) {
+    int hash = Integer.hashCode(sliceXIndex + treeY + sliceZIndex);
+    return locks.get(hash % locks.size());
   }
 
   /*package*/ @Nullable
@@ -193,8 +207,13 @@ public class TreeSpace {
     if (!areValidSliceIndices(sliceXIndex, treeY, sliceZIndex)) return null;
     else {
       if (treeY >= slices.size()) slice(treeY).allocate();
-      GiantRedwoodGenerator.TreeBlock prev = slices.get(treeY)[sliceXIndex][sliceZIndex];
-      slices.get(treeY)[sliceXIndex][sliceZIndex] = block;
+
+      GiantRedwoodGenerator.TreeBlock prev;
+      synchronized (getSyncLockFromSliceCoords(sliceXIndex, treeY, sliceZIndex)) {
+        prev = slices.get(treeY)[sliceXIndex][sliceZIndex];
+        slices.get(treeY)[sliceXIndex][sliceZIndex] = block;
+      }
+
       return prev;
     }
   }
@@ -262,7 +281,7 @@ public class TreeSpace {
      *     tree space.
      */
     boolean isValid() {
-      return y >= 0 && y < GiantRedwoodGenerator.MAX_TREE_HEIGHT;
+      return y >= 0 && y < MAX_TREE_HEIGHT;
     }
 
     /**
@@ -333,13 +352,15 @@ public class TreeSpace {
      */
     /*package*/ @Nonnull
     Optional<Slice> allocate() {
-      if (!isValid()) return Optional.empty();
-      else {
-        for (int y = tree.slices.size() - 1; y < this.y; y++)
-          tree.slices.add(
-              new GiantRedwoodGenerator.TreeBlock[tree.maxSliceIndex][tree.maxSliceIndex]);
+      synchronized (tree.slices) {
+        if (!isValid()) return Optional.empty();
+        else {
+          for (int y = tree.slices.size() - 1; y < this.y; y++)
+            tree.slices.add(
+                new GiantRedwoodGenerator.TreeBlock[tree.maxSliceIndex][tree.maxSliceIndex]);
 
-        return Optional.of(this);
+          return Optional.of(this);
+        }
       }
     }
   }
@@ -387,10 +408,10 @@ public class TreeSpace {
     /**
      * @return the tree block stored at this location within the tree space. When this cell is not
      *     valid, or when the space does not define a specific block, returns {@link
-     *     com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.TreeBlock#AIR}.
+     *     GiantRedwoodGenerator.TreeBlock#AIR}.
      */
     public @Nonnull GiantRedwoodGenerator.TreeBlock getNonnull() {
-      return Optional.ofNullable(get()).orElse(GiantRedwoodGenerator.TreeBlock.AIR);
+      return Optional.ofNullable(get()).orElse(AIR);
     }
 
     /**
@@ -420,23 +441,27 @@ public class TreeSpace {
      */
     public @Nullable GiantRedwoodGenerator.TreeBlock setIfEmpty(
         @Nullable GiantRedwoodGenerator.TreeBlock block) {
-      GiantRedwoodGenerator.TreeBlock previous = get();
-      if (previous == null || previous == GiantRedwoodGenerator.TreeBlock.AIR) set(block);
-      return previous;
+      synchronized (tree.getSyncLockFromSliceCoords(sliceXIndex, y, sliceZIndex)) {
+        GiantRedwoodGenerator.TreeBlock previous = get();
+        if (previous == null || previous.isEmpty()) set(block);
+        return previous;
+      }
     }
 
     /**
      * @return {@code true} IFF the {@linkplain #get() stored block at this location} is non-{@code
-     *     null} and not {@code AIR}.
+     *     null} and not {@linkplain
+     *     com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.TreeBlock#isEmpty() empty}.
      */
     public boolean isEmpty() {
       GiantRedwoodGenerator.TreeBlock b = get();
-      return b == null || b == GiantRedwoodGenerator.TreeBlock.AIR;
+      return b == null || b.isEmpty();
     }
 
     /**
-     * @return {@code true} if the {@linkplain #get() stored block at this location} is either
-     *     {@code null} or {@code AIR}.
+     * @return {@code true} if the {@linkplain #get() stored block at this location} is neither
+     *     {@code null} nor {@linkplain
+     *     com.brotherhoodgames.pixen.mod.tree.GiantRedwoodGenerator.TreeBlock#isEmpty() empty}.
      */
     public boolean isFilled() {
       return !isEmpty();
@@ -456,8 +481,7 @@ public class TreeSpace {
      *     be non-{@code null}; {@code AIR} is returned for any invalid or empty locations.
      */
     public @Nonnull Stream<GiantRedwoodGenerator.TreeBlock> surroundingBlocksInSlice() {
-      return Stream.of(north(), east(), south(), west())
-          .map(c -> c.map(Cell::get).orElse(GiantRedwoodGenerator.TreeBlock.AIR));
+      return Stream.of(north(), east(), south(), west()).map(c -> c.map(Cell::get).orElse(AIR));
     }
 
     /**
@@ -469,11 +493,42 @@ public class TreeSpace {
     }
 
     /**
+     * @return {@code true} if the given predicate returns {@code true} for any of the {@linkplain
+     *     #surroundingCells() blocks surrounding this location in 3D space}.
+     */
+    public boolean isTouching(@Nonnull Predicate<GiantRedwoodGenerator.TreeBlock> predicate) {
+      return surroundingCells()
+          .map(c -> Optional.ofNullable(c.get()).orElse(AIR))
+          .anyMatch(predicate);
+    }
+
+    /**
+     * @return {@code true} IFF the given predicate returns {@code true} for all {@linkplain
+     *     #isValid() valid} cells {@linkplain #surroundingCells() surrounding this location in 3D
+     *     space}.
+     */
+    public boolean isSurroundedBy(@Nonnull Predicate<GiantRedwoodGenerator.TreeBlock> predicate) {
+      return surroundingCells()
+          .map(c -> Optional.ofNullable(c.get()).orElse(AIR))
+          .allMatch(predicate);
+    }
+
+    /**
      * @return a potentially empty stream containing all the valid cells immediately surrounding
      *     this location (the north, east, south, and west cells).
      */
     public @Nonnull Stream<Cell> surroundingCellsInSlice() {
       return Stream.of(north(), east(), south(), west())
+          .filter(Optional::isPresent)
+          .map(Optional::get);
+    }
+
+    /**
+     * @return a potentially empty stream containing all the valid cells immediately surrounding
+     *     this location in 3D space (the north, east, south, west, up, and down cells).
+     */
+    public @Nonnull Stream<Cell> surroundingCells() {
+      return Stream.of(north(), east(), south(), west(), up(), down())
           .filter(Optional::isPresent)
           .map(Optional::get);
     }
@@ -554,6 +609,25 @@ public class TreeSpace {
     public @Nonnull Optional<Cell> west() {
       return Optional.ofNullable(
           sliceXIndex > 0 ? new Cell(tree, sliceXIndex - 1, y, sliceZIndex) : null);
+    }
+
+    /**
+     * @return an optional wrapping the valid cell location immediately {@linkplain
+     *     net.minecraft.core.Direction#UP above} of this location, or an empty optional if that
+     *     cell is not valid within the tree space.
+     */
+    public @Nonnull Optional<Cell> up() {
+      return Optional.ofNullable(
+          y < MAX_TREE_HEIGHT - 1 ? new Cell(tree, sliceXIndex, y + 1, sliceZIndex) : null);
+    }
+
+    /**
+     * @return an optional wrapping the valid cell location immediately {@linkplain
+     *     net.minecraft.core.Direction#DOWN below} of this location, or an empty optional if that
+     *     cell is not valid within the tree space.
+     */
+    public @Nonnull Optional<Cell> down() {
+      return Optional.ofNullable(y > 0 ? new Cell(tree, sliceXIndex, y - 1, sliceZIndex) : null);
     }
 
     /**

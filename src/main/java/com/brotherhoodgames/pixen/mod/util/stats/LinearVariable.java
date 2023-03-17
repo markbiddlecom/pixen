@@ -7,7 +7,7 @@ import lombok.Data;
 public class LinearVariable implements RandomVariable {
   private final double slope, offset;
 
-  public LinearVariable(double slope, double offset) {
+  public LinearVariable(double offset, double slope) {
     this.slope = slope;
     this.offset = offset;
   }
